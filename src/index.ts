@@ -24,11 +24,19 @@ connectDB();
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(morgan('dev'));
 
+// --- MONITOR DE TRÁFICO (DEBUG - AL INICIO) ---
+// Lo movemos aquí arriba para ver las peticiones ANTES de que CORS actúe.
+// Esto nos confirmará si el Frontend está llegando a la URL correcta.
+app.use((req, res, next) => {
+  console.log(`📡 [${new Date().toLocaleTimeString()}] ${req.method} ${req.originalUrl} | Origin: ${req.headers.origin}`);
+  next();
+});
+
 // --- CONFIGURACIÓN CORS (CRÍTICA PARA NETLIFY) ---
 const allowedOrigins = [
   'http://localhost:5173',                  // Tu entorno local
-  'https://novatech-pos.netlify.app',       // Tu Frontend en producción (El que dio error)
-  'https://omicron-pos.netlify.app'         // Variante por si acaso
+  'https://novatech-pos.netlify.app',       // Tu Frontend en producción
+  'https://omicron-pos.netlify.app'         // Variante
 ];
 
 app.use(cors({
@@ -39,12 +47,13 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log("🚫 Bloqueado por CORS:", origin); // Esto saldrá en los logs de Render si falla
+      console.log(`🚫 Bloqueado por CORS: ${origin}`); // Log explícito del bloqueo
       callback(new Error('Not allowed by CORS'));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  // AGREGADO: 'Cache-Control', 'X-Requested-With', 'Accept' para evitar bloqueos por headers del navegador
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With', 'Accept'],
   credentials: true
 }));
 
@@ -55,12 +64,6 @@ app.use(express.urlencoded({ extended: true }));
 const uploadsPath = path.join(__dirname, '../uploads');
 app.use('/uploads', express.static(uploadsPath));
 console.log(`📂 Carpeta pública de uploads configurada en: ${uploadsPath}`);
-
-// --- MONITOR DE TRÁFICO (DEBUG) ---
-app.use((req, res, next) => {
-  console.log(`📡 [${new Date().toLocaleTimeString()}] ${req.method} ${req.originalUrl} | Origin: ${req.headers.origin}`);
-  next();
-});
 
 // --- RUTAS ---
 app.use('/api/auth', authRoutes);
