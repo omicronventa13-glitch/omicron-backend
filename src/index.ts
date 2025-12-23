@@ -57,7 +57,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // --- CONFIGURACIÓN CARPETA UPLOADS (FIX PARA RENDER) ---
-// En Render, las carpetas vacías no se suben. Esto asegura que exista antes de guardar nada.
 const uploadsPath = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsPath)) {
   try {
@@ -83,19 +82,26 @@ app.get('/', (req, res) => {
   res.send('API Punto de Venta v3.0 - ACTIVA');
 });
 
-// --- MANEJADOR DE ERRORES GLOBAL (FIX 500) ---
-// Esto captura cualquier crash en las rutas y muestra el error real en los logs
+// --- MANEJADOR DE ERRORES GLOBAL (MODO DEBUG ACTIVADO) ---
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('🔥 ERROR CRÍTICO DEL SERVIDOR:', err);
-  
-  // Si es error de Multer (subida de archivos)
+  // 1. Lo registramos en los logs de Render para que tú lo veas en el Dashboard
+  console.error('🔥 ERROR CRÍTICO DEL SERVIDOR (Detalle):');
+  console.error(err);
+
+  // 2. Manejo de errores específicos
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: 'El archivo es demasiado grande' });
+    return res.status(400).json({ message: 'El archivo es demasiado grande (Máx 5MB)' });
   }
 
+  if (err.name === 'ValidationError') {
+     return res.status(400).json({ message: 'Error de validación de datos', error: err.message });
+  }
+
+  // 3. RESPUESTA AL FRONTEND (Ahora enviamos el error real en lugar de ocultarlo)
   res.status(500).json({
     message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Consulte los logs del servidor'
+    error: err.message || 'Error desconocido', // <--- AQUÍ VERÁS EL PROBLEMA REAL
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 
