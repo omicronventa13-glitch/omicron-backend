@@ -52,8 +52,8 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  // AGREGADO: 'Cache-Control', 'X-Requested-With', 'Accept' para evitar bloqueos por headers del navegador
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With', 'Accept'],
+  // AGREGADO: 'Pragma' y 'Expires' para cubrir todos los headers de control de caché
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With', 'Accept', 'Pragma', 'Expires'],
   credentials: true
 }));
 
