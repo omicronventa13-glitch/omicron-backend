@@ -23,7 +23,31 @@ connectDB();
 // --- MIDDLEWARES GLOBALES ---
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(morgan('dev'));
-app.use(cors());
+
+// --- CONFIGURACIÓN CORS (CRÍTICA PARA NETLIFY) ---
+const allowedOrigins = [
+  'http://localhost:5173',                  // Tu entorno local
+  'https://novatech-pos.netlify.app',       // Tu Frontend en producción (El que dio error)
+  'https://omicron-pos.netlify.app'         // Variante por si acaso
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Permitir solicitudes sin origen (como Postman o apps móviles nativas)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log("🚫 Bloqueado por CORS:", origin); // Esto saldrá en los logs de Render si falla
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -34,7 +58,7 @@ console.log(`📂 Carpeta pública de uploads configurada en: ${uploadsPath}`);
 
 // --- MONITOR DE TRÁFICO (DEBUG) ---
 app.use((req, res, next) => {
-  console.log(`📡 [${new Date().toLocaleTimeString()}] Solicitud entrante: ${req.method} ${req.originalUrl}`);
+  console.log(`📡 [${new Date().toLocaleTimeString()}] ${req.method} ${req.originalUrl} | Origin: ${req.headers.origin}`);
   next();
 });
 
