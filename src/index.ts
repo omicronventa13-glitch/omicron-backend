@@ -31,11 +31,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// --- DEBUG DE DATOS RECIBIDOS ---
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'PATCH'].includes(req.method) && !req.is('multipart/form-data')) {
+    console.log(`📦 Payload recibido (${req.method}):`, JSON.stringify(req.body, null, 2));
+  }
+  next();
+});
+
 // --- CONFIGURACIÓN CORS ---
 const allowedOrigins = [
   'http://localhost:5173',                  // Tu entorno local
   'https://novatech-pos.netlify.app',       // Tu Frontend en producción
-  'https://omicron-pos.netlify.app'         // Variante
+  'https://omicron-pos.netlify.app' ,        // Variante
+  'https://novatech-venta.netlify.app'    // Variante2
+
+
 ];
 
 app.use(cors({
@@ -56,18 +67,33 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// --- CONFIGURACIÓN CARPETA UPLOADS (FIX PARA RENDER) ---
-const uploadsPath = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsPath)) {
-  try {
-    fs.mkdirSync(uploadsPath, { recursive: true });
-    console.log(`📂 Carpeta 'uploads' creada automáticamente en: ${uploadsPath}`);
-  } catch (error) {
-    console.error('❌ Error al crear carpeta uploads:', error);
+// --- CONFIGURACIÓN CARPETA UPLOADS (SOLUCIÓN ROBUSTA) ---
+// Definimos rutas absolutas para evitar confusiones relativas
+const pathsToCreate = [
+  path.resolve(process.cwd(), 'uploads'),            // Ruta Raíz Absoluta
+  path.join(__dirname, '../uploads'),                // Ruta relativa al script
+  path.join(process.cwd(), 'dist', 'uploads')        // Ruta en dist (por si acaso)
+];
+
+console.log('🔍 --- ASEGURANDO CARPETAS DE UPLOAD ---');
+pathsToCreate.forEach(dirPath => {
+  if (!fs.existsSync(dirPath)) {
+    try {
+      console.log(`🔨 Intentando crear: ${dirPath}`);
+      fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 });
+      console.log(`✅ Carpeta creada con éxito: ${dirPath}`);
+    } catch (e: any) {
+      // YA NO IGNORAMOS EL ERROR - LO MOSTRAMOS
+      console.error(`❌ FALLÓ creación de carpeta (${dirPath}):`, e.message);
+    }
+  } else {
+    console.log(`🆗 Carpeta ya existe: ${dirPath}`);
   }
-}
-app.use('/uploads', express.static(uploadsPath));
-console.log(`📂 Carpeta pública de uploads servida desde: ${uploadsPath}`);
+});
+console.log('----------------------------------------');
+
+// Servimos la carpeta raíz como la pública oficial
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
 // --- RUTAS ---
 app.use('/api/auth', authRoutes);
@@ -82,25 +108,39 @@ app.get('/', (req, res) => {
   res.send('API Punto de Venta v3.0 - ACTIVA');
 });
 
-// --- MANEJADOR DE ERRORES GLOBAL (MODO DEBUG ACTIVADO) ---
+// --- MANEJADOR DE ERRORES GLOBAL (ALTA VISIBILIDAD) ---
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // 1. Lo registramos en los logs de Render para que tú lo veas en el Dashboard
-  console.error('🔥 ERROR CRÍTICO DEL SERVIDOR (Detalle):');
-  console.error(err);
-
-  // 2. Manejo de errores específicos
-  if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: 'El archivo es demasiado grande (Máx 5MB)' });
+  // 1. LOG DETALLADO EN SERVIDOR (RENDER CONSOLE)
+  console.error('\n🔥 ¡ERROR DETECTADO EN EL SERVIDOR! 🔥');
+  console.error(`📍 Ruta: ${req.method} ${req.originalUrl}`);
+  console.error(`❌ Mensaje: ${err.message}`);
+  console.error(`❌ Tipo: ${err.name}`);
+  if (err.stack) console.error(`❌ Stack (Primera línea): ${err.stack.split('\n')[1]}`);
+  console.error('---------------------------------------\n');
+  
+  // 2. RESPUESTAS ESPECÍFICAS
+  if (err.name === 'MulterError') {
+    return res.status(400).json({
+      message: `Error al subir imagen (Multer): ${err.message}`,
+      code: err.code
+    });
   }
 
-  if (err.name === 'ValidationError') {
-     return res.status(400).json({ message: 'Error de validación de datos', error: err.message });
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue)[0];
+    const value = err.keyValue[field];
+    return res.status(400).json({
+      message: `El dato '${value}' ya existe en el campo '${field}'.`,
+      error: 'Registro duplicado'
+    });
   }
 
-  // 3. RESPUESTA AL FRONTEND (Ahora enviamos el error real en lugar de ocultarlo)
+  // 3. RESPUESTA ERROR 500
+  // Enviamos el mensaje real al Frontend para que puedas verlo en Network -> Response
   res.status(500).json({
     message: 'Error interno del servidor',
-    error: err.message || 'Error desconocido', // <--- AQUÍ VERÁS EL PROBLEMA REAL
+    error: err.message || 'Error desconocido', // <--- Importante: Aquí verás la causa
+    type: err.name,
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
@@ -109,5 +149,6 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`------------------------------------------------`);
   console.log(`🚀 SERVIDOR LISTO EN PUERTO ${PORT}`);
+  console.log(`📂 Directorio de trabajo (CWD): ${process.cwd()}`);
   console.log(`------------------------------------------------`);
 });
